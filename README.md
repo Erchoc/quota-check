@@ -1,65 +1,86 @@
 # quota-check
 
-查看 Coding Agent 的小时 / 周额度用量。Rust 核心 + 多形态分发。
+[中文文档](./README.zh-CN.md)
+
+Check Coding Agent quota usage (5-hour / weekly windows) from the terminal.
+Rust core, shipped as prebuilt binaries through npm, cargo and brew.
 
 ```bash
-# CLI（npx 免安装）
-npx quota-check codex            # 原始 JSON
-npx quota-check codex --human    # 人类可读
-npx quota-check codex --whoami   # 这份凭据是谁
+# no install needed
+npx quota-check codex            # raw JSON
+npx quota-check codex --human    # human-readable
+npx quota-check codex --whoami   # which account is this credential
 
-# 其他安装方式（规划）
-cargo install quota-check
-brew install quota-check
+npx quota-check claude --human
+npx quota-check kimi --human
 ```
 
 ```js
-// 编程式 API（当前为本机执行模式，读取本机凭据如 ~/.codex/auth.json；
-// 未来云端托管上线后，同一套 API 改为云端环境触发，签名不变）
+// Programmatic API (currently LOCAL execution — reads credential files on the
+// machine it runs on. When the cloud-hosted mode ships, the same API switches
+// to cloud execution with unchanged signatures.)
 import { check, checkHuman, whoami } from "quota-check";
 
-const usage = await check("codex");       // 原始 JSON 对象
-const text  = await checkHuman("codex");  // 人类可读字符串
-const me    = await whoami("codex");      // 凭据对应的账号
+const usage = await check("codex");       // raw JSON object
+const text  = await checkHuman("claude"); // human-readable string
+const me    = await whoami("codex");      // account behind the credential
 ```
 
-## 仓库结构
+## Providers
+
+| Provider | Status | Data source |
+|---|---|---|
+| `codex` | ✅ | `~/.codex/auth.json` → `chatgpt.com/backend-api/wham/usage` (private endpoint) |
+| `claude` | ✅ | Keychain / `~/.claude/.credentials.json` → `api.anthropic.com/api/oauth/usage` (OAuth, Pro/Max only) |
+| `kimi` | ✅ | env / kimi-code / claude settings / pi → `api.kimi.com/coding/v1/usages` |
+| `gemini` | ❌ | No quota API exists (local session aggregation dropped for now) |
+
+All quota endpoints are private/undocumented and may change without notice.
+The human renderer adapts to the response structure (recursive scan for
+percentage fields) instead of hardcoding field paths, so minor API changes
+don't break it.
+
+## Repository layout
 
 ```
 crates/
-  quota-check-core/   # provider 插件、凭据加载、额度归一化、human 渲染
-  quota-check/        # CLI 二进制（clap）
-npm/quota-check/      # npm 薄壳：postinstall 下载平台二进制 + JS API
-.github/workflows/    # tag 触发多平台 Release 构建
+  quota-check-core/   # provider plugins, credential loading, human renderer
+  quota-check/        # the CLI binary (clap)
+npm/
+  quota-check/               # main npm package: JS launcher + programmatic API
+  quota-check-<platform>/    # per-platform binary packages (optionalDependencies)
+research/             # zero-dependency Node.js reference scripts (archived)
+.github/workflows/    # multi-platform release builds on v* tags
 ```
 
-## 开发
+## How the npm package works
+
+Each release publishes one package per platform (`quota-check-darwin-arm64`,
+...) containing the prebuilt Rust binary, plus the main `quota-check` package
+which pulls the right one via `optionalDependencies` (the same pattern as
+esbuild / Biome / swc). The JS `bin` entry is a thin launcher that locates the
+binary and forwards arguments — no postinstall downloads, works with npm's
+install-script restrictions.
+
+## Development
 
 ```bash
 cargo build
 ./target/debug/quota-check codex --human
+cargo test
 ```
 
-发版：打 `v*` tag → GitHub Actions 构建 5 平台二进制并传到 Release →
-`cd npm/quota-check && npm publish`（postinstall 会按版本号下载对应二进制）。
-
-## Provider 现状
-
-| Provider | 状态 | 数据来源 |
-|---|---|---|
-| codex | ✅ | `~/.codex/auth.json` → `wham/usage`（私有接口） |
-| claude | 规划 | OAuth usage 端点 |
-| gemini | 规划 | 待定 |
-
-注意：各家额度接口均为私有 / 未文档化，human 渲染层做了结构自适应
-（递归扫描百分比字段，不硬编码路径），接口微调时尽量仍能渲染。
+Release: push a `v*` tag → GitHub Actions builds 5 platform binaries and
+attaches them to the GitHub Release → publish the npm packages
+(`npm/quota-check-*` first, then `npm/quota-check`).
 
 ## Roadmap
 
-- [x] `codex` provider + JSON / --human / --whoami
-- [ ] npm 发布（`npx quota-check`）
-- [ ] claude / gemini provider
-- [ ] `quota-check daemon`：定时轮询、Webhook 告警、Reset 前自动执行预设任务、定时唤醒 Agent
-- [ ] cargo / brew 分发
-- [ ] 桌面端（Tauri）/ Web / H5（订阅制）
-- [ ] 云端托管执行模式（JS API 切云端触发）
+- [x] codex / claude / kimi providers, JSON + `--human` + `--whoami`
+- [x] npm distribution with per-platform binary packages
+- [ ] `quota-check daemon`: scheduled polling, webhook alerts, run preset
+      tasks before reset, wake agents on a schedule
+- [ ] cargo / brew distribution
+- [ ] cc-switch SQLite scan for kimi keys
+- [ ] Desktop (Tauri) / Web / H5 (subscription)
+- [ ] Cloud-hosted execution mode for the JS API

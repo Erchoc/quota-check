@@ -1,11 +1,11 @@
-//! 人类可读渲染。
+//! Human-readable rendering.
 //!
-//! 不硬编码字段名：递归扫描整个响应，凡是「含有百分比字段的对象」都当成一个
-//! 额度窗口。私有接口字段变了也能尽量渲染出来。
+//! No hardcoded field paths: recursively scan the response and treat any
+//! object containing a percentage field as a quota window. Providers may pass
+//! a pre-normalized document (see `providers::kimi::normalize`) when the raw
+//! response carries limit/used numbers instead of percentages.
 
 use serde_json::{Map, Value};
-
-use crate::auth::Identity;
 
 const PCT_KEYS: &[&str] = &[
     "used_percent",
@@ -45,7 +45,20 @@ const WINDOW_KEYS: &[&str] = &[
     "window",
 ];
 
-/// 扫描出的一个额度窗口。
+/// Well-known path segment → label. Authoritative window keys win over these;
+/// these win over reset-seconds inference (remaining time ≠ window size).
+const KNOWN_LABELS: &[(&str, &str)] = &[
+    ("primary_window", "5h"),
+    ("secondary_window", "week"),
+    ("five_hour", "5h"),
+    ("seven_day", "week"),
+    ("seven_day_opus", "week · Opus"),
+    ("seven_day_sonnet", "week · Sonnet"),
+    ("seven_day_oauth_apps", "week · OAuth apps"),
+    ("today", "day"),
+];
+
+/// One quota window found by scanning.
 pub struct Window {
     pub path: String,
     pub percent: f64,
@@ -55,11 +68,8 @@ pub struct Window {
 }
 
 fn pick<'a>(obj: &'a Map<String, Value>, keys: &[&'a str]) -> Option<(&'a str, &'a Value)> {
-    keys.iter().find_map(|k| {
-        obj.get(*k)
-            .filter(|v| !v.is_null())
-            .map(|v| (*k, v))
-    })
+    keys.iter()
+        .find_map(|k| obj.get(*k).filter(|v| !v.is_null()).map(|v| (*k, v)))
 }
 
 pub fn collect_windows(data: &Value) -> Vec<Window> {
@@ -115,12 +125,12 @@ fn fmt_duration(seconds: f64) -> String {
     }
 }
 
-/// 窗口时长归一化成「周 / 日 / Nh / Nd」这样的人话标签。
+/// Normalize a duration in seconds to a human label: week / day / Nh / Nd.
 fn duration_label(sec: f64) -> Option<String> {
     if (sec - 604800.0).abs() <= 60480.0 {
-        Some("周".into())
+        Some("week".into())
     } else if (sec - 86400.0).abs() <= 8640.0 {
-        Some("日".into())
+        Some("day".into())
     } else if sec < 86400.0 {
         Some(format!("{}h", (sec / 3600.0).round() as u64))
     } else {
@@ -145,8 +155,24 @@ fn window_label(w: &Option<(String, Value)>) -> Option<String> {
     duration_label(sec)
 }
 
+fn label_for(w: &Window) -> String {
+    let last = w.path.rsplit('.').next().unwrap_or(&w.path);
+    if let Some(l) = window_label(&w.window) {
+        return l;
+    }
+    if let Some((_, l)) = KNOWN_LABELS.iter().find(|(k, _)| *k == last) {
+        return l.to_string();
+    }
+    if let Some(l) = w.reset_seconds.and_then(duration_label) {
+        return l;
+    }
+    last.to_string()
+}
+
 fn bar(pct: f64, width: usize) -> String {
-    let filled = ((pct / 100.0) * width as f64).round().clamp(0.0, width as f64) as usize;
+    let filled = ((pct / 100.0) * width as f64)
+        .round()
+        .clamp(0.0, width as f64) as usize;
     format!("{}{}", "█".repeat(filled), "░".repeat(width - filled))
 }
 
@@ -155,18 +181,18 @@ fn colorize(pct: f64, text: &str, enabled: bool) -> String {
         return text.to_string();
     }
     let code = if pct >= 90.0 {
-        31 // 红
+        31 // red
     } else if pct >= 75.0 {
-        33 // 黄
+        33 // yellow
     } else {
-        32 // 绿
+        32 // green
     };
     format!("\x1b[{code}m{text}\x1b[0m")
 }
 
 fn fmt_reset(w: &Window) -> String {
     if let Some(secs) = w.reset_seconds {
-        return format!("重置 {}", fmt_duration(secs));
+        return format!("resets in {}", fmt_duration(secs));
     }
     let Some(v) = &w.reset_at else { return String::new() };
     let t = if let Some(n) = v.as_f64() {
@@ -183,35 +209,39 @@ fn fmt_reset(w: &Window) -> String {
     let left = (t.timestamp_millis() - chrono::Utc::now().timestamp_millis()) as f64 / 1000.0;
     let local = t.with_timezone(&chrono::Local);
     format!(
-        "重置 {}  ({})",
+        "resets in {}  ({})",
         fmt_duration(left),
         local.format("%Y-%m-%d %H:%M:%S")
     )
 }
 
-/// `color`：是否输出 ANSI 颜色（一般取 stdout 是否 TTY）。
-pub fn render(data: &Value, ident: Option<&Identity>, auth_path: &str, color: bool) -> String {
+/// Mask a token for display: first 6 + … + last 4.
+pub fn mask(t: &str) -> String {
+    if t.len() <= 12 {
+        "***".into()
+    } else {
+        format!("{}…{}", &t[..6], &t[t.len() - 4..])
+    }
+}
+
+/// Render a quota document. `header` lines (account, credential source, ...)
+/// are printed between the title and the window bars.
+///
+/// `color`: emit ANSI colors (usually stdout-is-TTY).
+pub fn render(title: &str, data: &Value, header: &[String], color: bool) -> String {
     let mut lines: Vec<String> = Vec::new();
     lines.push(String::new());
-    lines.push("  Codex 额度".into());
+    lines.push(format!("  {title}"));
     lines.push(format!("  {}", "─".repeat(46)));
-
-    if let Some(id) = ident {
-        let bits: Vec<&str> = [id.email.as_deref(), id.plan.as_deref()]
-            .into_iter()
-            .flatten()
-            .collect();
-        if !bits.is_empty() {
-            lines.push(format!("  {}", bits.join("  ·  ")));
-        }
-        lines.push(format!("  凭据  {auth_path}"));
+    lines.extend(header.iter().map(|l| format!("  {l}")));
+    if !header.is_empty() {
         lines.push(String::new());
     }
 
     let windows = collect_windows(data);
     if windows.is_empty() {
-        lines.push("  没在响应里找到百分比字段。".into());
-        lines.push("  去掉 --human 看原始 JSON，接口结构可能变了。".into());
+        lines.push("  No percentage fields found in the response.".into());
+        lines.push("  Drop --human to inspect the raw JSON; the API shape may have changed.".into());
         lines.push(String::new());
         return lines.join("\n");
     }
@@ -222,18 +252,10 @@ pub fn render(data: &Value, ident: Option<&Identity>, auth_path: &str, color: bo
         } else {
             w.percent
         };
-        let label = window_label(&w.window)
-            .or_else(|| w.reset_seconds.and_then(duration_label))
-            .unwrap_or_else(|| {
-                w.path
-                    .rsplit('.')
-                    .next()
-                    .unwrap_or(&w.path)
-                    .to_string()
-            });
+        let label = label_for(w);
         let pct_text = format!("{:>6}", format!("{pct:.1}%"));
         lines.push(format!(
-            "  {:<6} {} {}   {}",
+            "  {:<16} {} {}   {}",
             label,
             colorize(pct, &bar(pct, 24), color),
             colorize(pct, &pct_text, color),
@@ -241,9 +263,83 @@ pub fn render(data: &Value, ident: Option<&Identity>, auth_path: &str, color: bo
         ));
         let dim = if color { "\x1b[2m" } else { "" };
         let reset = if color { "\x1b[0m" } else { "" };
-        lines.push(format!("  {dim}      {}{reset}", w.path));
+        lines.push(format!("  {dim}  {}{reset}", w.path));
     }
 
     lines.push(String::new());
     lines.join("\n")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn collects_codex_style_windows() {
+        let data = json!({
+            "rate_limit": {
+                "primary_window": {"used_percent": 12.5, "resets_in_seconds": 18000},
+                "secondary_window": {"used_percent": 80.0, "resets_in_seconds": 604800}
+            }
+        });
+        let ws = collect_windows(&data);
+        assert_eq!(ws.len(), 2);
+        assert_eq!(ws[0].percent, 12.5);
+        assert_eq!(label_for(&ws[0]), "5h");
+        assert_eq!(label_for(&ws[1]), "week");
+    }
+
+    #[test]
+    fn collects_claude_style_utilization() {
+        let data = json!({
+            "five_hour": {"utilization": 3, "resets_at": "2099-01-01T00:00:00Z"},
+            "seven_day_opus": {"utilization": 0}
+        });
+        let ws = collect_windows(&data);
+        assert_eq!(ws.len(), 2);
+        assert_eq!(label_for(&ws[1]), "week · Opus");
+        assert!(fmt_reset(&ws[0]).contains("resets in"));
+    }
+
+    #[test]
+    fn fraction_percent_is_scaled() {
+        let data = json!({"w": {"used_percent": 0.42}});
+        let out = render("T", &data, &[], false);
+        assert!(out.contains("42.0%"));
+    }
+
+    #[test]
+    fn window_size_seconds_beats_known_label() {
+        let data = json!({"mystery": {"used_percent": 1, "window_size_seconds": 604800}});
+        let ws = collect_windows(&data);
+        assert_eq!(label_for(&ws[0]), "week");
+    }
+
+    #[test]
+    fn duration_label_buckets() {
+        assert_eq!(duration_label(604800.0).unwrap(), "week");
+        assert_eq!(duration_label(86400.0).unwrap(), "day");
+        assert_eq!(duration_label(18000.0).unwrap(), "5h");
+        assert_eq!(duration_label(172800.0).unwrap(), "2d");
+    }
+
+    #[test]
+    fn bar_clamps() {
+        assert_eq!(bar(150.0, 4), "████");
+        assert_eq!(bar(0.0, 4), "░░░░");
+        assert_eq!(bar(50.0, 4), "██░░");
+    }
+
+    #[test]
+    fn masks_tokens() {
+        assert_eq!(mask("sk-ant-oat01-abcdefgh"), "sk-ant…efgh");
+        assert_eq!(mask("short"), "***");
+    }
+
+    #[test]
+    fn empty_response_is_explained() {
+        let out = render("T", &json!({"foo": 1}), &[], false);
+        assert!(out.contains("No percentage fields"));
+    }
 }

@@ -1,11 +1,22 @@
 {
   "name": "quota-check",
-  "version": "0.1.0",
-  "description": "查看 Coding Agent 的小时/周额度用量（Codex，更多 provider 在路上）。Rust 二进制，Node 仅作分发壳。",
-  "keywords": ["codex", "claude", "quota", "rate-limit", "coding-agent", "cli"],
+  "version": "0.2.0",
+  "description": "Check Coding Agent quota usage (5h / weekly windows) — Codex, Claude Code, Kimi Code. Rust binary with a thin Node launcher.",
+  "keywords": [
+    "codex",
+    "claude",
+    "kimi",
+    "quota",
+    "rate-limit",
+    "coding-agent",
+    "cli"
+  ],
   "license": "MIT",
   "type": "module",
-  "repository": "github:erchoc/quota-check",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/erchoc/quota-check.git"
+  },
   "main": "index.js",
   "exports": {
     ".": "./index.js",
@@ -14,18 +25,19 @@
   "bin": {
     "quota-check": "bin/quota-check.js"
   },
-  "scripts": {
-    "postinstall": "node install.js"
-  },
   "engines": {
     "node": ">=22"
   },
   "files": [
     "bin/",
     "lib/",
-    "index.js",
-    "install.js"
+    "index.js"
   ],
-  "os": ["darwin", "linux", "win32"],
-  "cpu": ["x64", "arm64"]
+  "optionalDependencies": {
+    "quota-check-darwin-arm64": "0.2.0",
+    "quota-check-darwin-x64": "0.2.0",
+    "quota-check-linux-arm64": "0.2.0",
+    "quota-check-linux-x64": "0.2.0",
+    "quota-check-win32-x64": "0.2.0"
+  }
 }

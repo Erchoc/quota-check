@@ -3,3 +3,6 @@ node_modules
 npm/quota-check/vendor/
 *.log
 .DS_Store
+npm/quota-check/.npmrc
+npm/quota-check-*/quota-check
+npm/quota-check-*/quota-check.exe

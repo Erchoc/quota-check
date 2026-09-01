@@ -1,17 +1,19 @@
 use std::io::IsTerminal;
 use std::path::PathBuf;
 
-use anyhow::Result;
+use anyhow::{bail, Result};
 use clap::{Args, Parser, Subcommand};
 
 use quota_check_core::{auth, human, providers};
+
+const PROVIDERS: &[&str] = &["codex", "claude", "kimi"];
 
 #[derive(Parser)]
 #[command(
     name = "quota-check",
     version,
-    about = "查看 Coding Agent 的小时 / 周额度用量（Codex，更多 provider 在路上）",
-    after_help = "示例：\n  quota-check codex            # 原始 JSON\n  quota-check codex --human    # 人类可读\n  quota-check codex --whoami   # 这份凭据是谁"
+    about = "Check Coding Agent quota usage (5h / weekly windows) from the terminal",
+    after_help = "Examples:\n  quota-check codex            # raw JSON\n  quota-check codex --human    # human-readable\n  quota-check codex --whoami   # which account is this credential\n  quota-check claude --human\n  quota-check kimi --human"
 )]
 struct Cli {
     #[command(subcommand)]
@@ -20,34 +22,97 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// 查询 OpenAI Codex 额度（读本地 ~/.codex/auth.json）
+    /// Check OpenAI Codex quota (reads ~/.codex/auth.json)
     Codex(CodexArgs),
+    /// Check Claude Code subscription quota (OAuth, Pro/Max)
+    Claude(ClaudeArgs),
+    /// Check Kimi Code quota
+    Kimi(KimiArgs),
 }
 
 #[derive(Args)]
 struct CodexArgs {
-    /// 输出人类可读格式（默认输出原始 JSON）
+    /// Human-readable output (default is raw JSON)
     #[arg(long)]
     human: bool,
 
-    /// 指定凭据文件路径（默认 $CODEX_HOME/auth.json 或 ~/.codex/auth.json）
+    /// Credential file path (default $CODEX_HOME/auth.json or ~/.codex/auth.json)
     #[arg(long, value_name = "PATH")]
     auth: Option<PathBuf>,
 
-    /// 只看这份凭据属于哪个账号，不请求额度接口
+    /// Only show which account this credential belongs to (no quota request)
     #[arg(long)]
     whoami: bool,
 }
 
+#[derive(Args)]
+struct ClaudeArgs {
+    /// Human-readable output (default is raw JSON)
+    #[arg(long)]
+    human: bool,
+
+    /// OAuth token (sk-ant-oat...); overrides env/Keychain/credentials file
+    #[arg(long, value_name = "TOKEN")]
+    token: Option<String>,
+}
+
+#[derive(Args)]
+struct KimiArgs {
+    /// Human-readable output (default is raw JSON)
+    #[arg(long)]
+    human: bool,
+
+    /// API key (sk-...); overrides env/credential file discovery
+    #[arg(long, value_name = "KEY")]
+    key: Option<String>,
+
+    /// API base URL (default https://api.kimi.com/coding/v1;
+    /// CN subscriptions may need the moonshot.cn address)
+    #[arg(long, value_name = "URL")]
+    base: Option<String>,
+}
+
 fn main() {
+    // Friendlier error for unknown providers than clap's default.
+    if let Some(first) = std::env::args().nth(1) {
+        if !first.starts_with('-') && !PROVIDERS.contains(&first.as_str()) {
+            eprintln!(
+                "\n  ✗ unknown provider '{first}'\n\n  supported providers: {}\n",
+                PROVIDERS.join(", ")
+            );
+            std::process::exit(2);
+        }
+    }
+
     let cli = Cli::parse();
     let result = match cli.command {
         Commands::Codex(args) => run_codex(args),
+        Commands::Claude(args) => run_claude(args),
+        Commands::Kimi(args) => run_kimi(args),
     };
     if let Err(e) = result {
         eprintln!("\n  ✗ {e:#}\n");
         std::process::exit(1);
     }
+}
+
+fn print_result(
+    title: &str,
+    data: &serde_json::Value,
+    normalized: Option<&serde_json::Value>,
+    header: &[String],
+    human_flag: bool,
+) -> Result<()> {
+    if human_flag {
+        let tty = std::io::stdout().is_terminal();
+        println!(
+            "{}",
+            human::render(title, normalized.unwrap_or(data), header, tty)
+        );
+    } else {
+        println!("{}", serde_json::to_string_pretty(data)?);
+    }
+    Ok(())
 }
 
 fn run_codex(args: CodexArgs) -> Result<()> {
@@ -67,8 +132,7 @@ fn run_codex(args: CodexArgs) -> Result<()> {
         if args.human {
             println!();
             for (k, v) in payload.as_object().unwrap() {
-                let v = v.as_str().unwrap_or("-");
-                println!("  {k:<12} {v}");
+                println!("  {k:<12} {}", v.as_str().unwrap_or("-"));
             }
             println!();
         } else {
@@ -79,13 +143,55 @@ fn run_codex(args: CodexArgs) -> Result<()> {
 
     let data = providers::codex::fetch_usage(&cred)?;
 
-    if args.human {
-        println!(
-            "{}",
-            human::render(&data, ident.as_ref(), &auth_path.display().to_string(), tty)
-        );
-    } else {
-        println!("{}", serde_json::to_string_pretty(&data)?);
+    let mut header = vec![];
+    if let Some(id) = &ident {
+        let bits: Vec<&str> = [id.email.as_deref(), id.plan.as_deref()]
+            .into_iter()
+            .flatten()
+            .collect();
+        if !bits.is_empty() {
+            header.push(bits.join("  ·  "));
+        }
     }
-    Ok(())
+    header.push(format!("creds  {}", auth_path.display()));
+    let _ = tty;
+
+    print_result("Codex quota", &data, None, &header, args.human)
+}
+
+fn run_claude(args: ClaudeArgs) -> Result<()> {
+    let candidates = providers::claude::collect_candidates(args.token.as_deref());
+    if candidates.is_empty() {
+        bail!(
+            "no Claude OAuth credentials found. scanned:\n  --token arg\n  env CLAUDE_CODE_OAUTH_TOKEN\n  macOS Keychain: Claude Code-credentials\n  {}\n\n  run `claude` to log in first, or pass --token",
+            providers::claude::credentials_path().display()
+        );
+    }
+    let (data, hit) = providers::claude::fetch_usage(&candidates)?;
+    let header = vec![
+        format!("creds  {}", hit.source),
+        format!("       {}", human::mask(&hit.token)),
+    ];
+    print_result("Claude Code quota", &data, None, &header, args.human)
+}
+
+fn run_kimi(args: KimiArgs) -> Result<()> {
+    let base = args
+        .base
+        .unwrap_or_else(|| providers::kimi::DEFAULT_BASE.into())
+        .trim_end_matches('/')
+        .to_string();
+    let candidates = providers::kimi::collect_candidates(args.key.as_deref());
+    if candidates.is_empty() {
+        bail!(
+            "no credential candidates found. scanned:\n  KIMI_API_KEY / MOONSHOT_API_KEY / KIMI_CODE_API_KEY env vars\n  ~/.kimi-code/credentials/kimi-code.json\n  ~/.claude/settings.json and project-level .claude/settings*.json\n  ~/.pi/agent/auth.json, ~/.pi/providers/kimi-coding/config.json\n\n  specify directly: --key sk-xxx"
+        );
+    }
+    let (data, hit) = providers::kimi::fetch_usage(&candidates, &base)?;
+    let normalized = providers::kimi::normalize(&data);
+    let header = vec![
+        format!("creds  {}", hit.source),
+        format!("       {}", human::mask(&hit.token)),
+    ];
+    print_result("Kimi Code quota", &data, Some(&normalized), &header, args.human)
 }

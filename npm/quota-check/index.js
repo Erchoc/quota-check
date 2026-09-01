@@ -1,13 +1,16 @@
-// 编程式 API：在本机调用 Rust 二进制，返回解析后的数据。
+// Programmatic API: invokes the local Rust binary and returns parsed data.
 //
 //   import { check, checkHuman, whoami } from "quota-check";
-//   const usage = await check("codex");            // => 原始 JSON 对象
-//   const text  = await checkHuman("codex");       // => 人类可读字符串
-//   const me    = await whoami("codex");           // => 凭据对应的账号信息
+//   const usage = await check("codex");            // raw JSON object
+//   const text  = await checkHuman("claude");      // human-readable string
+//   const me    = await whoami("codex");           // account behind the credential
 //
-// 注意：当前是「本机执行」模式，读取的是本机凭据文件（如 ~/.codex/auth.json），
-// 所以这段代码必须跑在用户自己的机器上。未来云端托管模式上线后，
-// 同一套 API 会改为走云端环境触发，签名保持不变。
+// Providers: "codex" | "claude" | "kimi"
+//
+// Note: this is currently LOCAL execution — it reads credential files on the
+// machine it runs on (e.g. ~/.codex/auth.json, macOS Keychain). The same API
+// will switch to cloud-hosted execution when that mode ships; signatures
+// stay unchanged.
 
 import { spawn } from "node:child_process";
 import { binaryPath } from "./lib/binary.js";
@@ -31,22 +34,26 @@ function runRaw(args) {
 
 function buildArgs(provider, options = {}, extra = []) {
   const args = [provider];
-  if (options.auth) args.push("--auth", options.auth);
+  // provider-specific credential flags
+  if (options.auth) args.push("--auth", options.auth); // codex
+  if (options.token) args.push("--token", options.token); // claude
+  if (options.key) args.push("--key", options.key); // kimi
+  if (options.base) args.push("--base", options.base); // kimi
   return args.concat(extra);
 }
 
-/** 查询额度，返回原始 JSON 对象。 */
+/** Query quota, returns the raw JSON object. */
 export async function check(provider = "codex", options = {}) {
   const out = await runRaw(buildArgs(provider, options));
   return JSON.parse(out);
 }
 
-/** 查询额度，返回人类可读字符串。 */
+/** Query quota, returns the human-readable rendering. */
 export async function checkHuman(provider = "codex", options = {}) {
   return runRaw(buildArgs(provider, options, ["--human"]));
 }
 
-/** 只看凭据属于哪个账号，返回账号信息对象。 */
+/** Show which account the credential belongs to (codex only). */
 export async function whoami(provider = "codex", options = {}) {
   const out = await runRaw(buildArgs(provider, options, ["--whoami"]));
   return JSON.parse(out);

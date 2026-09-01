@@ -1,7 +1,8 @@
-//! OpenAI Codex 额度查询。
+//! OpenAI Codex quota query.
 //!
-//! 注意：wham/usage 是私有接口，结构可能随时变动。
-//! 默认原样透传 JSON；human 渲染层做结构自适应，不硬编码字段路径。
+//! Note: wham/usage is a private endpoint, its shape can change at any time.
+//! The raw JSON is passed through by default; the human renderer adapts to the
+//! structure instead of hardcoding field paths.
 
 use std::time::Duration;
 
@@ -25,21 +26,27 @@ pub fn fetch_usage(auth: &Auth) -> Result<serde_json::Value> {
         req = req.header("ChatGPT-Account-Id", id);
     }
 
-    let res = req.send().map_err(|e| anyhow!("请求失败：{e}"))?;
+    let res = req.send().map_err(|e| anyhow!("request failed: {e}"))?;
     let status = res.status();
-    let body = res.text().map_err(|e| anyhow!("读取响应失败：{e}"))?;
+    let body = res
+        .text()
+        .map_err(|e| anyhow!("failed to read response: {e}"))?;
 
     if status.as_u16() == 401 || status.as_u16() == 403 {
         bail!(
-            "HTTP {status} — token 已过期或账号无权访问。\n  跑一次 codex login 刷新 {}\n  响应：{}",
+            "HTTP {status} — token expired or account has no access.\n  run `codex login` to refresh {}\n  response: {}",
             auth.path.display(),
             &body[..body.len().min(300)]
         );
     }
     if !status.is_success() {
-        bail!("HTTP {status}\n  响应：{}", &body[..body.len().min(500)]);
+        bail!("HTTP {status}\n  response: {}", &body[..body.len().min(500)]);
     }
 
-    serde_json::from_str(&body)
-        .map_err(|_| anyhow!("返回的不是 JSON（接口可能变了）：\n{}", &body[..body.len().min(500)]))
+    serde_json::from_str(&body).map_err(|_| {
+        anyhow!(
+            "response is not JSON (the API may have changed):\n{}",
+            &body[..body.len().min(500)]
+        )
+    })
 }

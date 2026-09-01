@@ -47,7 +47,65 @@ jobs:
           cd target/${{ matrix.target }}/release
           tar -czf $env:GITHUB_WORKSPACE/quota-check-${{ matrix.target }}.tar.gz quota-check.exe
 
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: binary-${{ matrix.target }}
+          path: quota-check-${{ matrix.target }}.tar.gz
+          retention-days: 7
+
       - name: Upload to release
         uses: softprops/action-gh-release@v2
         with:
           files: quota-check-${{ matrix.target }}.tar.gz
+
+  # Publishes the per-platform binary packages, then the main package.
+  # Enable by setting the repo variable NPM_PUBLISH=true and the NPM_TOKEN secret.
+  publish-npm:
+    if: vars.NPM_PUBLISH == 'true'
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: binary-*
+          path: artifacts
+
+      - name: Assemble platform packages
+        run: |
+          set -e
+          declare -A MAP=(
+            [aarch64-apple-darwin]=quota-check-darwin-arm64
+            [x86_64-apple-darwin]=quota-check-darwin-x64
+            [x86_64-unknown-linux-gnu]=quota-check-linux-x64
+            [aarch64-unknown-linux-gnu]=quota-check-linux-arm64
+            [x86_64-pc-windows-msvc]=quota-check-win32-x64
+          )
+          for target in "${!MAP[@]}"; do
+            dir="npm/${MAP[$target]}"
+            tar -xzf "artifacts/binary-$target/quota-check-$target.tar.gz" -C "$dir"
+            ls -la "$dir"
+          done
+
+      - name: Publish platform packages
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          set -e
+          for dir in npm/quota-check-darwin-arm64 npm/quota-check-darwin-x64 \
+                     npm/quota-check-linux-x64 npm/quota-check-linux-arm64 \
+                     npm/quota-check-win32-x64; do
+            (cd "$dir" && npm publish)
+          done
+
+      - name: Publish main package
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: cd npm/quota-check && npm publish
