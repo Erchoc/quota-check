@@ -26,8 +26,14 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
+      - name: Install cross toolchain (linux arm64)
+        if: matrix.cross
+        run: sudo apt-get update && sudo apt-get install -y gcc-aarch64-linux-gnu
+
       - name: Build
         run: cargo build --release --target ${{ matrix.target }}
+        env:
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
 
       - name: Package (unix)
         if: matrix.os != 'windows-latest'
