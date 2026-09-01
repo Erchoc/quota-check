@@ -1,0 +1,17 @@
+[workspace]
+resolver = "2"
+members = ["crates/quota-check-core", "crates/quota-check"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+repository = "https://github.com/erchoc/quota-check"
+description = "Check Coding Agent quota usage (Codex, Claude, ...) from the terminal"
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"
