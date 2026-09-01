@@ -1,6 +1,6 @@
 {
   "name": "quota-check",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Check Coding Agent quota usage (5h / weekly windows) — Codex, Claude Code, Kimi Code. Rust binary with a thin Node launcher.",
   "keywords": [
     "codex",
@@ -38,6 +38,6 @@
     "quota-check-darwin-x64": "0.2.0",
     "quota-check-linux-arm64": "0.2.0",
     "quota-check-linux-x64": "0.2.0",
-    "quota-check-win32-x64": "0.2.0"
+    "quota-check-windows-x64": "0.2.0"
   }
 }

@@ -1,0 +1,22 @@
+{
+  "name": "quota-check-windows-x64",
+  "version": "0.2.0",
+  "description": "Prebuilt quota-check binary for Windows x64 (do not install directly, it is pulled in by quota-check via optionalDependencies).",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/erchoc/quota-check.git"
+  },
+  "os": [
+    "win32"
+  ],
+  "cpu": [
+    "x64"
+  ],
+  "exports": {
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "quota-check.exe"
+  ]
+}

@@ -86,7 +86,7 @@ jobs:
             [x86_64-apple-darwin]=quota-check-darwin-x64
             [x86_64-unknown-linux-gnu]=quota-check-linux-x64
             [aarch64-unknown-linux-gnu]=quota-check-linux-arm64
-            [x86_64-pc-windows-msvc]=quota-check-win32-x64
+            [x86_64-pc-windows-msvc]=quota-check-windows-x64
           )
           for target in "${!MAP[@]}"; do
             dir="npm/${MAP[$target]}"
@@ -101,7 +101,7 @@ jobs:
           set -e
           for dir in npm/quota-check-darwin-arm64 npm/quota-check-darwin-x64 \
                      npm/quota-check-linux-x64 npm/quota-check-linux-arm64 \
-                     npm/quota-check-win32-x64; do
+                     npm/quota-check-windows-x64; do
             (cd "$dir" && npm publish)
           done
 

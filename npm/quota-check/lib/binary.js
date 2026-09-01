@@ -21,7 +21,7 @@ const PLATFORM_PKGS = {
   "darwin-x64": "quota-check-darwin-x64",
   "linux-x64": "quota-check-linux-x64",
   "linux-arm64": "quota-check-linux-arm64",
-  "win32-x64": "quota-check-win32-x64",
+  "win32-x64": "quota-check-windows-x64",
 };
 
 export function vendorPath() {
