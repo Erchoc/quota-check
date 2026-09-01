@@ -23,8 +23,7 @@
     "bin/",
     "lib/",
     "index.js",
-    "install.js",
-    "vendor/"
+    "install.js"
   ],
   "os": ["darwin", "linux", "win32"],
   "cpu": ["x64", "arm64"]
