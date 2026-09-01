@@ -1,15 +1,16 @@
-"use strict";
-
 // postinstall：按平台从 GitHub Releases 下载预编译的 Rust 二进制到 vendor/。
 // 下载失败不阻断安装（exit 0），给出 cargo 安装的兜底提示。
 
-const fs = require("node:fs");
-const https = require("node:https");
-const path = require("node:path");
-const { execFileSync } = require("node:child_process");
+import fs from "node:fs";
+import https from "node:https";
+import path from "node:path";
+import { execFileSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 
-const { vendorPath } = require("./lib/binary");
-const pkg = require("./package.json");
+import { vendorPath } from "./lib/binary.js";
+
+const HERE = path.dirname(fileURLToPath(import.meta.url));
+const pkg = JSON.parse(fs.readFileSync(path.join(HERE, "package.json"), "utf8"));
 
 const REPO = "erchoc/quota-check";
 

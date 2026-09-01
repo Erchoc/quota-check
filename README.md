@@ -16,7 +16,7 @@ brew install quota-check
 ```js
 // 编程式 API（当前为本机执行模式，读取本机凭据如 ~/.codex/auth.json；
 // 未来云端托管上线后，同一套 API 改为云端环境触发，签名不变）
-const { check, checkHuman, whoami } = require("quota-check");
+import { check, checkHuman, whoami } from "quota-check";
 
 const usage = await check("codex");       // 原始 JSON 对象
 const text  = await checkHuman("codex");  // 人类可读字符串

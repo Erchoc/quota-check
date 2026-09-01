@@ -1,10 +1,9 @@
 #!/usr/bin/env node
-"use strict";
 
 // CLI 入口：原样转发参数给 Rust 二进制。
 
-const { spawnSync } = require("node:child_process");
-const { binaryPath } = require("../lib/binary");
+import { spawnSync } from "node:child_process";
+import { binaryPath } from "../lib/binary.js";
 
 const r = spawnSync(binaryPath(), process.argv.slice(2), { stdio: "inherit" });
 

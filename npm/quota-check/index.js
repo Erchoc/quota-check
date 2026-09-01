@@ -1,8 +1,6 @@
-"use strict";
-
 // 编程式 API：在本机调用 Rust 二进制，返回解析后的数据。
 //
-//   const { check, checkHuman, whoami } = require("quota-check");
+//   import { check, checkHuman, whoami } from "quota-check";
 //   const usage = await check("codex");            // => 原始 JSON 对象
 //   const text  = await checkHuman("codex");       // => 人类可读字符串
 //   const me    = await whoami("codex");           // => 凭据对应的账号信息
@@ -11,8 +9,10 @@
 // 所以这段代码必须跑在用户自己的机器上。未来云端托管模式上线后，
 // 同一套 API 会改为走云端环境触发，签名保持不变。
 
-const { spawn } = require("node:child_process");
-const { binaryPath } = require("./lib/binary");
+import { spawn } from "node:child_process";
+import { binaryPath } from "./lib/binary.js";
+
+export { binaryPath } from "./lib/binary.js";
 
 function runRaw(args) {
   return new Promise((resolve, reject) => {
@@ -36,20 +36,18 @@ function buildArgs(provider, options = {}, extra = []) {
 }
 
 /** 查询额度，返回原始 JSON 对象。 */
-async function check(provider = "codex", options = {}) {
+export async function check(provider = "codex", options = {}) {
   const out = await runRaw(buildArgs(provider, options));
   return JSON.parse(out);
 }
 
-/** 查询额度，返回人类可读字符串（含 ANSI 颜色时用 { color: true }）。 */
-async function checkHuman(provider = "codex", options = {}) {
+/** 查询额度，返回人类可读字符串。 */
+export async function checkHuman(provider = "codex", options = {}) {
   return runRaw(buildArgs(provider, options, ["--human"]));
 }
 
 /** 只看凭据属于哪个账号，返回账号信息对象。 */
-async function whoami(provider = "codex", options = {}) {
+export async function whoami(provider = "codex", options = {}) {
   const out = await runRaw(buildArgs(provider, options, ["--whoami"]));
   return JSON.parse(out);
 }
-
-module.exports = { check, checkHuman, whoami, binaryPath };

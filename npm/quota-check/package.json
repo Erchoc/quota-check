@@ -4,6 +4,7 @@
   "description": "查看 Coding Agent 的小时/周额度用量（Codex，更多 provider 在路上）。Rust 二进制，Node 仅作分发壳。",
   "keywords": ["codex", "claude", "quota", "rate-limit", "coding-agent", "cli"],
   "license": "MIT",
+  "type": "module",
   "repository": "github:erchoc/quota-check",
   "main": "index.js",
   "exports": {
@@ -17,7 +18,7 @@
     "postinstall": "node install.js"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=22"
   },
   "files": [
     "bin/",
