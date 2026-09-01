@@ -28,5 +28,5 @@ await check("kimi", { key: "sk-...", base: "https://api.moonshot.cn/coding/v1" }
 
 Supported providers: `codex`, `claude`, `kimi`.
 
-Docs, source and issues: <https://github.com/erchoc/quota-check> ·
-[中文文档](https://github.com/erchoc/quota-check/blob/main/README.zh-CN.md)
+Docs, source and issues: <https://github.com/Erchoc/quota-check> ·
+[中文文档](https://github.com/Erchoc/quota-check/blob/main/README.zh-CN.md)

@@ -15,7 +15,7 @@
   "type": "module",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/erchoc/quota-check.git"
+    "url": "git+https://github.com/Erchoc/quota-check.git"
   },
   "main": "index.js",
   "exports": {

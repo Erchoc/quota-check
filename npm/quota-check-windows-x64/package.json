@@ -5,7 +5,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/erchoc/quota-check.git"
+    "url": "git+https://github.com/Erchoc/quota-check.git"
   },
   "os": [
     "win32"

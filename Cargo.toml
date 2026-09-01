@@ -6,7 +6,7 @@ members = ["crates/quota-check-core", "crates/quota-check"]
 version = "0.2.0"
 edition = "2021"
 license = "MIT"
-repository = "https://github.com/erchoc/quota-check"
+repository = "https://github.com/Erchoc/quota-check"
 description = "Check Coding Agent quota usage (Codex, Claude, ...) from the terminal"
 
 [profile.release]
