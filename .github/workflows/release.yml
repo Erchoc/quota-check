@@ -3,6 +3,15 @@ name: Release
 on:
   push:
     tags: ["v*"]
+  # Manual rehearsal: runs the whole pipeline with `npm publish --dry-run`, so
+  # the credentials, the assembled tarballs and the version checks can all be
+  # verified without burning a version number.
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Assemble and check everything, but do not publish"
+        type: boolean
+        default: true
 
 permissions:
   contents: write
@@ -56,16 +65,20 @@ jobs:
           retention-days: 7
 
       - name: Upload to release
+        if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
           files: quota-check-${{ matrix.target }}.tar.gz
 
   # Publishes the per-platform binary packages, then the main package.
-  # Enable by setting the repo variable NPM_PUBLISH=true and the NPM_TOKEN secret.
+  # Requires the repo variable NPM_PUBLISH=true and the NPM_TOKEN secret.
   publish-npm:
     if: vars.NPM_PUBLISH == 'true'
     needs: build
     runs-on: ubuntu-latest
+    env:
+      # A manual run defaults to a rehearsal; a tag push always publishes.
+      DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run || false }}
     steps:
       - uses: actions/checkout@v4
 
@@ -74,6 +87,54 @@ jobs:
           node-version: 22
           registry-url: https://registry.npmjs.org
 
+      # ci.yml does not run on tag pushes, so re-check here: publishing a
+      # release whose manifests disagree with the tag is unrecoverable (npm
+      # versions are immutable).
+      - name: Tag and manifests agree
+        run: |
+          set -euo pipefail
+          crate=$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            tag="${GITHUB_REF_NAME#v}"
+            echo "tag=$tag  Cargo.toml=$crate"
+            if [ "$tag" != "$crate" ]; then
+              echo "::error::tag v$tag does not match Cargo.toml version $crate"
+              exit 1
+            fi
+          else
+            echo "manual run on ${GITHUB_REF_NAME}; checking manifests against Cargo.toml $crate"
+          fi
+          node -e '
+            const fs = require("fs");
+            const want = process.argv[1];
+            const main = JSON.parse(fs.readFileSync("npm/quota-check/package.json"));
+            const bad = [];
+            if (main.version !== want) bad.push(`npm/quota-check is ${main.version}`);
+            for (const [dep, v] of Object.entries(main.optionalDependencies)) {
+              if (v !== want) bad.push(`${dep} pinned at ${v}`);
+              const p = JSON.parse(fs.readFileSync(`npm/${dep}/package.json`));
+              if (p.version !== want) bad.push(`${dep} package.json is ${p.version}`);
+            }
+            if (bad.length) {
+              console.log(`::error::version drift vs ${want}: ${bad.join("; ")}`);
+              process.exit(1);
+            }
+            console.log(`all manifests at ${want}`);
+          ' "$crate"
+
+      # Fails loudly on a missing, expired or wrongly-scoped token, before any
+      # package has gone out.
+      - name: Verify npm credentials
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${NODE_AUTH_TOKEN:-}" ]; then
+            echo "::error::NPM_TOKEN secret is empty"
+            exit 1
+          fi
+          echo "publishing as: $(npm whoami)"
+
       - uses: actions/download-artifact@v4
         with:
           pattern: binary-*
@@ -81,7 +142,7 @@ jobs:
 
       - name: Assemble platform packages
         run: |
-          set -e
+          set -euo pipefail
           declare -A MAP=(
             [aarch64-apple-darwin]=quota-check-darwin-arm64
             [x86_64-apple-darwin]=quota-check-darwin-x64
@@ -90,23 +151,61 @@ jobs:
             [x86_64-pc-windows-msvc]=quota-check-windows-x64
           )
           for target in "${!MAP[@]}"; do
-            dir="npm/${MAP[$target]}"
+            pkg="${MAP[$target]}"
+            dir="npm/$pkg"
             tar -xzf "artifacts/binary-$target/quota-check-$target.tar.gz" -C "$dir"
+            # The `files` allowlist decides what ships; make sure the binary it
+            # names actually arrived, or npm would publish an empty package.
+            bin=$(node -e "console.log(require('./$dir/package.json').files[0])")
+            if [ ! -f "$dir/$bin" ]; then
+              echo "::error::$pkg is missing $bin after extracting the tarball"
+              exit 1
+            fi
+            chmod +x "$dir/$bin"
+            cp LICENSE "$dir/"
             ls -la "$dir"
           done
+          cp LICENSE npm/quota-check/
 
       - name: Publish platform packages
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
-          set -e
+          set -euo pipefail
+          [ "$DRY_RUN" = "true" ] && flags=(--dry-run) || flags=()
           for dir in npm/quota-check-darwin-arm64 npm/quota-check-darwin-x64 \
                      npm/quota-check-linux-x64 npm/quota-check-linux-arm64 \
                      npm/quota-check-windows-x64; do
-            (cd "$dir" && npm publish)
+            name=$(node -e "console.log(require('./$dir/package.json').name)")
+            version=$(node -e "console.log(require('./$dir/package.json').version)")
+            # Re-running a partially failed release must not hard-fail on the
+            # packages that already went out.
+            if npm view "$name@$version" version >/dev/null 2>&1; then
+              echo "skip $name@$version (already on the registry)"
+              continue
+            fi
+            (cd "$dir" && npm publish "${flags[@]+"${flags[@]}"}")
           done
 
+      # Last, so `quota-check` never resolves optionalDependencies that do not
+      # exist yet.
       - name: Publish main package
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: cd npm/quota-check && npm publish
+        run: |
+          set -euo pipefail
+          [ "$DRY_RUN" = "true" ] && flags=(--dry-run) || flags=()
+          version=$(node -e "console.log(require('./npm/quota-check/package.json').version)")
+          if npm view "quota-check@$version" version >/dev/null 2>&1; then
+            echo "skip quota-check@$version (already on the registry)"
+            exit 0
+          fi
+          cd npm/quota-check && npm publish "${flags[@]+"${flags[@]}"}"
+
+      - name: Summary
+        run: |
+          if [ "$DRY_RUN" = "true" ]; then
+            echo "### Rehearsal only — nothing was published" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "### Published quota-check and its 5 platform packages" >> "$GITHUB_STEP_SUMMARY"
+          fi
