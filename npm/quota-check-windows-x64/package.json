@@ -1,6 +1,6 @@
 {
   "name": "quota-check-windows-x64",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Prebuilt quota-check binary for Windows x64 (do not install directly, it is pulled in by quota-check via optionalDependencies).",
   "license": "MIT",
   "repository": {

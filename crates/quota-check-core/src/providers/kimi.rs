@@ -16,7 +16,13 @@ pub const DEFAULT_BASE: &str = "https://api.kimi.com/coding/v1";
 
 /// cc-switch local-routing mode writes placeholders into settings.json,
 /// not real keys.
-const SENTINELS: &[&str] = &["PROXY_MANAGED", "MANAGED", "null", "undefined", "your-api-key"];
+const SENTINELS: &[&str] = &[
+    "PROXY_MANAGED",
+    "MANAGED",
+    "null",
+    "undefined",
+    "your-api-key",
+];
 
 pub fn looks_like_key(t: &str) -> bool {
     let t = t.trim();
@@ -106,7 +112,10 @@ pub fn collect_candidates(arg_key: Option<&str>) -> Vec<Candidate> {
             .or_else(|| cred.get("credential"))
             .unwrap_or(&cred);
         for k in ["access_token", "accessToken", "api_key", "apiKey", "token"] {
-            push(t.get(k).and_then(|v| v.as_str()), cred_path.display().to_string());
+            push(
+                t.get(k).and_then(|v| v.as_str()),
+                cred_path.display().to_string(),
+            );
         }
     }
 
@@ -126,7 +135,8 @@ pub fn collect_candidates(arg_key: Option<&str>) -> Vec<Candidate> {
             .unwrap_or("");
         // Collect even when the base URL doesn't look like Kimi — probing will
         // sort it out, and the tag helps debugging.
-        let looks_kimi = url.to_lowercase().contains("kimi") || url.to_lowercase().contains("moonshot");
+        let looks_kimi =
+            url.to_lowercase().contains("kimi") || url.to_lowercase().contains("moonshot");
         let tag = if looks_kimi {
             String::new()
         } else {
@@ -170,10 +180,16 @@ pub fn collect_candidates(arg_key: Option<&str>) -> Vec<Candidate> {
             pi_auth.display().to_string(),
         );
     }
-    let pi_cfg = home().join(".pi").join("providers").join("kimi-coding").join("config.json");
+    let pi_cfg = home()
+        .join(".pi")
+        .join("providers")
+        .join("kimi-coding")
+        .join("config.json");
     if let Some(cfg) = read_json(&pi_cfg) {
         push(
-            cfg.get("api_key").or_else(|| cfg.get("apiKey")).and_then(|v| v.as_str()),
+            cfg.get("api_key")
+                .or_else(|| cfg.get("apiKey"))
+                .and_then(|v| v.as_str()),
             pi_cfg.display().to_string(),
         );
     }
@@ -210,7 +226,10 @@ pub fn probe(token: &str, base: &str) -> Probe {
         .get(format!("{base}/usages"))
         .bearer_auth(token)
         .header("Accept", "application/json")
-        .header("User-Agent", concat!("quota-check/", env!("CARGO_PKG_VERSION")))
+        .header(
+            "User-Agent",
+            concat!("quota-check/", env!("CARGO_PKG_VERSION")),
+        )
         .send();
 
     let res = match res {
@@ -231,7 +250,7 @@ pub fn probe(token: &str, base: &str) -> Probe {
         return Probe {
             ok: false,
             status,
-            note: body.chars().take(140).collect(),
+            note: crate::human::one_line(&body, 140),
             data: None,
         };
     }
@@ -312,7 +331,7 @@ pub fn normalize(data: &Value) -> Value {
     let mut add_row = |detail: &Value, window: Option<&Value>, idx: &mut usize| {
         let limit = num(detail.get("limit"));
         let remaining = num(detail.get("remaining"));
-        let used = num(detail.get("used")).or_else(|| match (limit, remaining) {
+        let used = num(detail.get("used")).or(match (limit, remaining) {
             (Some(l), Some(r)) => Some(l - r),
             _ => None,
         });
@@ -334,7 +353,8 @@ pub fn normalize(data: &Value) -> Value {
             .and_then(|v| v.as_str())
         {
             if let Ok(t) = chrono::DateTime::parse_from_rfc3339(rt) {
-                let left = (t.timestamp_millis() - chrono::Utc::now().timestamp_millis()) as f64 / 1000.0;
+                let left =
+                    (t.timestamp_millis() - chrono::Utc::now().timestamp_millis()) as f64 / 1000.0;
                 row.insert("resets_in_seconds".into(), Value::from(left.max(0.0)));
             }
         }
@@ -344,11 +364,18 @@ pub fn normalize(data: &Value) -> Value {
 
     // Top-level weekly quota. The API gives no window spec here; it is weekly.
     if let Some(d) = data.get("usage").or_else(|| data.get("membership")) {
-        add_row(d, Some(&serde_json::json!({"duration": 1, "timeUnit": "TIME_UNIT_WEEK"})), &mut idx);
+        add_row(
+            d,
+            Some(&serde_json::json!({"duration": 1, "timeUnit": "TIME_UNIT_WEEK"})),
+            &mut idx,
+        );
     }
     if let Some(limits) = data.get("limits").and_then(|v| v.as_array()) {
         for item in limits {
-            let detail = item.get("detail").or_else(|| item.get("usage")).unwrap_or(item);
+            let detail = item
+                .get("detail")
+                .or_else(|| item.get("usage"))
+                .unwrap_or(item);
             add_row(detail, item.get("window"), &mut idx);
         }
     }

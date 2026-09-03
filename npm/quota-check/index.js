@@ -1,7 +1,8 @@
 // Programmatic API: invokes the local Rust binary and returns parsed data.
 //
-//   import { check, checkHuman, whoami } from "quota-check";
+//   import { check, checkAll, checkHuman, whoami } from "quota-check";
 //   const usage = await check("codex");            // raw JSON object
+//   const all   = await checkAll();                // every provider at once
 //   const text  = await checkHuman("claude");      // human-readable string
 //   const me    = await whoami("codex");           // account behind the credential
 //
@@ -37,6 +38,7 @@ function buildArgs(provider, options = {}, extra = []) {
   // provider-specific credential flags
   if (options.auth) args.push("--auth", options.auth); // codex
   if (options.token) args.push("--token", options.token); // claude
+  if (options.noRefresh) args.push("--no-refresh"); // claude
   if (options.key) args.push("--key", options.key); // kimi
   if (options.base) args.push("--base", options.base); // kimi
   return args.concat(extra);
@@ -44,7 +46,19 @@ function buildArgs(provider, options = {}, extra = []) {
 
 /** Query quota, returns the raw JSON object. */
 export async function check(provider = "codex", options = {}) {
-  const out = await runRaw(buildArgs(provider, options));
+  const out = await runRaw(buildArgs(provider, options, ["--json"]));
+  return JSON.parse(out);
+}
+
+/**
+ * Query every provider in one call. Resolves to
+ * `{ codex: {ok, data|error}, claude: {...}, kimi: {...} }`, and only rejects
+ * when no provider produced a quota at all.
+ */
+export async function checkAll() {
+  // `all` uses each provider's own credential discovery; it takes no
+  // per-provider flags.
+  const out = await runRaw(["all", "--json"]);
   return JSON.parse(out);
 }
 
@@ -55,6 +69,6 @@ export async function checkHuman(provider = "codex", options = {}) {
 
 /** Show which account the credential belongs to (codex only). */
 export async function whoami(provider = "codex", options = {}) {
-  const out = await runRaw(buildArgs(provider, options, ["--whoami"]));
+  const out = await runRaw(buildArgs(provider, options, ["--whoami", "--json"]));
   return JSON.parse(out);
 }

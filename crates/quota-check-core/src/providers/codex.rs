@@ -21,7 +21,10 @@ pub fn fetch_usage(auth: &Auth) -> Result<serde_json::Value> {
         .get(ENDPOINT)
         .bearer_auth(&auth.access_token)
         .header("Accept", "application/json")
-        .header("User-Agent", concat!("quota-check/", env!("CARGO_PKG_VERSION")));
+        .header(
+            "User-Agent",
+            concat!("quota-check/", env!("CARGO_PKG_VERSION")),
+        );
     if let Some(id) = &auth.account_id {
         req = req.header("ChatGPT-Account-Id", id);
     }
@@ -40,7 +43,10 @@ pub fn fetch_usage(auth: &Auth) -> Result<serde_json::Value> {
         );
     }
     if !status.is_success() {
-        bail!("HTTP {status}\n  response: {}", &body[..body.len().min(500)]);
+        bail!(
+            "HTTP {status}\n  response: {}",
+            &body[..body.len().min(500)]
+        );
     }
 
     serde_json::from_str(&body).map_err(|_| {

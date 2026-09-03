@@ -1,14 +1,22 @@
 {
   "name": "quota-check-linux-x64",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Prebuilt quota-check binary for linux x64 (do not install directly, it is pulled in by quota-check via optionalDependencies).",
   "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Erchoc/quota-check.git"
   },
-  "os": ["linux"],
-  "cpu": ["x64"],
-  "exports": { "./package.json": "./package.json" },
-  "files": ["quota-check"]
+  "os": [
+    "linux"
+  ],
+  "cpu": [
+    "x64"
+  ],
+  "exports": {
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "quota-check"
+  ]
 }

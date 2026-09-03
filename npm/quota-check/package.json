@@ -1,8 +1,9 @@
 {
   "name": "quota-check",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "Check Coding Agent quota usage (5h / weekly windows) — Codex, Claude Code, Kimi Code. Rust binary with a thin Node launcher.",
   "keywords": [
+    "qc",
     "codex",
     "claude",
     "kimi",
@@ -23,7 +24,8 @@
     "./package.json": "./package.json"
   },
   "bin": {
-    "quota-check": "bin/quota-check.js"
+    "quota-check": "bin/quota-check.js",
+    "qc": "bin/quota-check.js"
   },
   "engines": {
     "node": ">=22"
@@ -34,10 +36,10 @@
     "index.js"
   ],
   "optionalDependencies": {
-    "quota-check-darwin-arm64": "0.2.0",
-    "quota-check-darwin-x64": "0.2.0",
-    "quota-check-linux-arm64": "0.2.0",
-    "quota-check-linux-x64": "0.2.0",
-    "quota-check-windows-x64": "0.2.0"
+    "quota-check-darwin-arm64": "0.3.0",
+    "quota-check-darwin-x64": "0.3.0",
+    "quota-check-linux-arm64": "0.3.0",
+    "quota-check-linux-x64": "0.3.0",
+    "quota-check-windows-x64": "0.3.0"
   }
 }

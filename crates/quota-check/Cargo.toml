@@ -4,11 +4,23 @@ description = "Check Coding Agent quota usage (Codex, Claude, ...) from the term
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+rust-version.workspace = true
 repository.workspace = true
 
 [[bin]]
 name = "quota-check"
 path = "src/main.rs"
+
+# Short alias, so `cargo install quota-check` also puts `qc` on PATH.
+# (The npm package gets the same alias from its bin map, without shipping a
+# second binary in the tarball.)
+[[bin]]
+name = "qc"
+path = "src/bin/qc.rs"
+
+[lib]
+name = "quota_check"
+path = "src/lib.rs"
 
 [dependencies]
 quota-check-core = { path = "../quota-check-core" }

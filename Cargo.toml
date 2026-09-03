@@ -3,8 +3,9 @@ resolver = "2"
 members = ["crates/quota-check-core", "crates/quota-check"]
 
 [workspace.package]
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
+rust-version = "1.82"
 license = "MIT"
 repository = "https://github.com/Erchoc/quota-check"
 description = "Check Coding Agent quota usage (Codex, Claude, ...) from the terminal"

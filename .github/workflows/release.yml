@@ -39,13 +39,14 @@ jobs:
         if: matrix.os != 'windows-latest'
         run: |
           cd target/${{ matrix.target }}/release
-          tar -czf $GITHUB_WORKSPACE/quota-check-${{ matrix.target }}.tar.gz quota-check
+          # Both names, so a plain tarball install also gets the `qc` alias.
+          tar -czf $GITHUB_WORKSPACE/quota-check-${{ matrix.target }}.tar.gz quota-check qc
 
       - name: Package (windows)
         if: matrix.os == 'windows-latest'
         run: |
           cd target/${{ matrix.target }}/release
-          tar -czf $env:GITHUB_WORKSPACE/quota-check-${{ matrix.target }}.tar.gz quota-check.exe
+          tar -czf $env:GITHUB_WORKSPACE/quota-check-${{ matrix.target }}.tar.gz quota-check.exe qc.exe
 
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v4

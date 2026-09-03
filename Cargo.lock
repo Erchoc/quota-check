@@ -807,7 +807,7 @@ dependencies = [
 
 [[package]]
 name = "quota-check"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -817,7 +817,7 @@ dependencies = [
 
 [[package]]
 name = "quota-check-core"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "base64",

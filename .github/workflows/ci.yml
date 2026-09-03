@@ -1,0 +1,74 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  rust:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Format
+        run: cargo fmt --all --check
+
+      - name: Clippy
+        run: cargo clippy --all-targets --all-features -- -D warnings
+
+      - name: Test
+        run: cargo test --all
+
+  npm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # The launcher must stay loadable without a binary present, and every
+      # package manifest must stay parseable before a release can publish it.
+      - name: Validate npm packages
+        run: |
+          set -e
+          node --check npm/quota-check/bin/quota-check.js
+          node -e "import('./npm/quota-check/index.js').then(m => {
+            const need = ['check', 'checkAll', 'checkHuman', 'whoami', 'binaryPath'];
+            const missing = need.filter(k => typeof m[k] !== 'function');
+            if (missing.length) throw new Error('missing exports: ' + missing);
+          })"
+          for f in npm/*/package.json; do node -e "JSON.parse(require('fs').readFileSync('$f'))"; done
+
+      # A release publishes all six packages together; drifting versions break
+      # the optionalDependencies resolution.
+      - name: Versions are in lockstep
+        run: |
+          set -e
+          crate=$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)
+          echo "crate version: $crate"
+          node -e "
+            const fs = require('fs');
+            const main = JSON.parse(fs.readFileSync('npm/quota-check/package.json'));
+            const want = '$crate';
+            const bad = [];
+            if (main.version !== want) bad.push('npm/quota-check ' + main.version);
+            for (const [dep, v] of Object.entries(main.optionalDependencies)) {
+              if (v !== want) bad.push(dep + ' pinned at ' + v);
+              const p = JSON.parse(fs.readFileSync('npm/' + dep + '/package.json'));
+              if (p.version !== want) bad.push(dep + ' package.json ' + p.version);
+            }
+            if (bad.length) { console.error('version drift vs Cargo.toml ' + want + ':\n  ' + bad.join('\n  ')); process.exit(1); }
+          "
