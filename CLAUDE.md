@@ -30,6 +30,8 @@ npm 薄壳分发。中文回复，代码与注释用英文。
 
 ## 当前进度
 
+**已发布 v0.3.0**（npm 主包 + 5 个平台包 + GitHub Release，由 tag 自动发布）
+
 - [x] codex / claude / kimi 三个 provider，JSON + `--human` + `--whoami`
 - [x] npm 平台二进制分发（optionalDependencies 模式）
 - [x] `qc` 短别名：cargo 装两个 bin，npm 走 bin map
@@ -39,6 +41,10 @@ npm 薄壳分发。中文回复，代码与注释用英文。
       Keychain / `.credentials.json`），`--no-refresh` 可关；429 限流短路
 - [x] CI：fmt / clippy `-D warnings` / test 三平台 + npm 包与版本一致性校验
 - [x] LICENSE（MIT）
+- [x] 发布流程加固：tag 与 manifest 版本一致性闸门、`npm whoami` 前置校验、
+      平台包二进制存在性检查、已发布版本跳过（重跑安全）、
+      `workflow_dispatch` 干跑演练（`dry_run` 默认 true）
+- [x] 所有 GitHub Action 升到 Node 24 版本，CI annotation 清零
 
 未完成 / 下一步见 README 的 Roadmap：daemon 模式、cargo & brew 分发、
 kimi 的 cc-switch SQLite 扫描、桌面端、JS API 云端执行。
